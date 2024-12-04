@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whiteboard</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        #canvas {
+            border: 1px solid black;
+            background-color: white;
+            cursor: crosshair;
+        }
+        #color-picker {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <input type="color" id="color-picker" value="#000000">
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const colorPicker = document.getElementById('color-picker');
+        
+        // Set canvas size
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Initialize WebSocket connection
+        const socket = new WebSocket('ws://localhost:8080/ws/whiteboard');
+
+        // Store current drawing settings
+        let currentColor = colorPicker.value;
+        let isDrawing = false;
+        let prevX = 0;
+        let prevY = 0;
+
+        // Handle incoming messages (drawings from other users)
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if (Array.isArray(data)) {
+                // If the message is an array, it's the current state of the whiteboard
+                data.forEach((drawAction) => {
+                    draw(drawAction.x, drawAction.y, drawAction.prevX, drawAction.prevY, drawAction.color);
+                });
+            } else {
+                // Otherwise, it's a single drawing action
+                draw(data.x, data.y, data.prevX, data.prevY, data.color);
+            }
+        };
+
+        // Start drawing
+        canvas.addEventListener('mousedown', (event) => {
+            isDrawing = true;
+            prevX = event.clientX;
+            prevY = event.clientY;
+        });
+
+        // Stop drawing
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+
+        // Draw on the canvas
+        canvas.addEventListener('mousemove', (event) => {
+            if (isDrawing) {
+                const x = event.clientX;
+                const y = event.clientY;
+
+                // Draw locally
+                draw(x, y, prevX, prevY, currentColor);
+
+                // Send drawing data to the server
+                const data = { x, y, prevX, prevY, color: currentColor };
+                socket.send(JSON.stringify(data));
+
+                // Update previous position
+                prevX = x;
+                prevY = y;
+            }
+        });
+
+        // Draw function to render on canvas
+        function draw(x, y, prevX, prevY, color) {
+            ctx.beginPath();
+            ctx.moveTo(prevX, prevY);
+            ctx.lineTo(x, y);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.closePath();
+        }
+
+        // Handle color change
+        colorPicker.addEventListener('input', (event) => {
+            currentColor = event.target.value;
+        });
+    </script>
+</body>
+</html>
